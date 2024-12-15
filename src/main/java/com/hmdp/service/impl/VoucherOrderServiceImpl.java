@@ -10,9 +10,11 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +33,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Autowired
     private ISeckillVoucherService seckillVoucherService;
-
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
     //注入ID生成器
     @Autowired
     private RedisIdWorker redisIdWorker;
@@ -53,11 +56,22 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
         //一人一单
         Long id = UserHolder.getUser().getId();
-        synchronized (id.toString().intern()) {//intern返回常量池中的引用，确保id相同情况下返回的锁住的对象是一样的
+        //创建锁对象
+        SimpleRedisLock simpleLock = new SimpleRedisLock("VoucherOrder:" + id, stringRedisTemplate);
+        boolean islock = simpleLock.tryLock(10);
+        if(!islock){
+            return Result.fail("一人一单!!!");
+        }
+        try {
             //获取代理对象
             IVoucherOrderService proxy =(IVoucherOrderService) AopContext.currentProxy();
             return proxy.CreateOrder(voucherId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            simpleLock.unlock();
         }
+
     }
     @Transactional(rollbackFor = Exception.class)
     public Result CreateOrder(Long voucherId){
