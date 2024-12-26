@@ -25,7 +25,7 @@ import java.time.LocalDateTime;
  *  服务实现类
  * </p>
  *
- * @author 虎哥
+ * @author cjj
  * @since 2021-12-22
  */
 @Service
@@ -57,8 +57,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         //一人一单
         Long id = UserHolder.getUser().getId();
         //创建锁对象
-        SimpleRedisLock simpleLock = new SimpleRedisLock("VoucherOrder:" + id, stringRedisTemplate);
-        boolean islock = simpleLock.tryLock(10);
+        SimpleRedisLock simpleLock = new SimpleRedisLock("Order:" + id, stringRedisTemplate);
+        boolean islock = simpleLock.tryLock(60);
+//        System.out.println("islock"+islock);
         if(!islock){
             return Result.fail("一人一单!!!");
         }
