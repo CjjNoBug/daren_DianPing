@@ -11,10 +11,13 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -22,7 +25,10 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -100,6 +106,50 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         //返回token给前端
         return Result.ok(token);
+    }
+
+    @Override
+    public Result sign() {
+        Long userId = UserHolder.getUser().getId();
+        LocalDateTime nowTime = LocalDateTime.now();
+        String yyyyMM = nowTime.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String key= USER_SIGN_KEY+userId+":"+yyyyMM;
+        int dayOfMonth = nowTime.getDayOfMonth();
+        stringRedisTemplate.opsForValue().setBit(key,dayOfMonth-1,true);
+        return Result.ok();
+    }
+
+    @Override
+    public Result signCount() {
+        Long userId = UserHolder.getUser().getId();
+        LocalDateTime nowTime = LocalDateTime.now();
+        String yyyyMM = nowTime.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String key= USER_SIGN_KEY+userId+":"+yyyyMM;
+        int dayOfMonth = nowTime.getDayOfMonth();
+        List<Long> result = stringRedisTemplate.opsForValue().bitField(
+                key,
+                BitFieldSubCommands.create()
+                        .get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0)
+        );
+        if(result==null||result.size()==0){
+            return Result.ok(0);
+        }
+        Long count = result.get(0);
+        if(count==null||count==0){
+            return Result.ok(0);
+        }
+        int ans=0;
+        while(true){
+            if((count&1)==0){
+                //未签到，结束
+                break;
+            }
+            else{
+                ans++;
+            }
+            count>>>=1;
+        }
+        return Result.ok(ans);
     }
 
     private User CreateUserByPhone(String phone) {
